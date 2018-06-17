@@ -45,7 +45,7 @@ Param = namedtuple('ParamStruct', [
     'weight_decay',
     'momentum',
     'input_size',
-    'card',
+    'alpha',
 
     'is_train',
     'gpu_num'
@@ -107,8 +107,7 @@ def initParam(input_flag):
     momentum=0.9,
     input_size=32,
 
-    # Cardinality used in backbone ResNext
-    card=10,
+    alpha=1,
 
     is_train=(input_flag.mode == 'train'),
     gpu_num=input_flag.gpu_num
@@ -116,3 +115,10 @@ def initParam(input_flag):
 
   return params
 
+def endLayers():
+  return ['resnet_v2_50/block3',
+          'resnet_v2_50/block4',
+          'block-1',
+          'block-2',
+          'block-3',
+          'block-4']
