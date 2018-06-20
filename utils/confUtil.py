@@ -8,13 +8,14 @@ from absl import flags
 param_help = {
     'dataset_path': 'directory contains tfrecords',
     'mean_img': 'path to mean image file',
-    'mode': 'train or eval',
+    'mode': 'must be train, eval or pred',
 
     'log_step': 'log each log_step',
-    'log_dir': 'log directory',
+    'model_dir': 'model directory',
 
     'train_batch_size': 'batch size for training',
     'epoch_num': 'epoch number',
+    'per_epoch_num': 'number of example per epoch',
     'gpu_num': 'number of gpu device'
 }
 
@@ -35,10 +36,11 @@ Param = namedtuple('ParamStruct', [
     'mode',
 
     'log_step',
-    'log_dir',
+    'model_dir',
 
     'train_batch_size',
     'epoch_num',
+    'per_epoch_num',
 
     'class_num',
     'learning_rate',
@@ -51,32 +53,38 @@ Param = namedtuple('ParamStruct', [
     'gpu_num'
 ])
 
-
 def inputParam():
   """
   Run script param defination.
   :return:
   """
-  flags.DEFINE_string(*arg_def('dataset_path', ''))
+  flags.DEFINE_string(*arg_def('dataset_path', '/home/autel/libs/ssd-tensorflow-ljanyst/pascal-voc/trainval/VOCdevkit/VOC2007/tfrecords'))
   flags.DEFINE_string(*arg_def('mean_img', ''))
   flags.DEFINE_string(*arg_def('mode', 'train'))
 
   flags.DEFINE_integer(*arg_def('log_step', 10))
-  flags.DEFINE_string(*arg_def('log_dir', ''))
+  flags.DEFINE_string(*arg_def('model_dir', ''))
 
-  flags.DEFINE_integer(*arg_def('train_batch_size', 32))
+  flags.DEFINE_integer(*arg_def('train_batch_size', 2))
   flags.DEFINE_integer(*arg_def('epoch_num', 300))
+  flags.DEFINE_integer(*arg_def('per_epoch_num', 50000))
   flags.DEFINE_integer(*arg_def('gpu_num', 1))
+
+  # checkInputParam(flags.FLAGS)
 
   return flags.FLAGS
 
 
+
 def checkInputParam(FLAGS):
+  if FLAGS.mode is None:
+    raise RuntimeError('You must specify --mode.')
+
   if FLAGS.mode is 'train' and FLAGS.dataset_path is None:
     raise RuntimeError('You must specify --dataset_path for training.')
 
-  if FLAGS.log_dir is None:
-    raise RuntimeError('You must specify --log_dir for training.')
+  if FLAGS.model_dir is None:
+    raise RuntimeError('You must specify --model_dir for training.')
 
   if FLAGS.mean_img is None:
     raise RuntimeError('You must specify --mean_img for training.')
@@ -96,10 +104,11 @@ def initParam(input_flag):
     mode=input_flag.mode,
 
     log_step=input_flag.log_step,
-    log_dir=input_flag.log_dir,
+    model_dir=input_flag.model_dir,
 
     train_batch_size=input_flag.train_batch_size,
     epoch_num=input_flag.epoch_num,
+    per_epoch_num=input_flag.per_epoch_num,
 
     class_num=10,
     learning_rate=0.1,

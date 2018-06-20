@@ -10,6 +10,8 @@ import math
 import tensorflow as tf
 import numpy as np
 import scipy
+from skimage.transform  import resize
+import matplotlib.pyplot as plt
 
 
 def _int64List_feature(value):
@@ -90,16 +92,16 @@ def anno2json(ann_path, dest_json_path, label_id_file):
 
 
 def cvrt2tfrecord(json_path, img_home, label_file,
-                  dest_path, each_max):
+                  dest_path, each_max, dest_img_size):
   """
   Read json files in src_path and corresponding image file,
   convert them to tfrecord format saved in dest_path.
   :param json_path: directory contains json files.
   :param img_home: home prefix to image name in json files.
   :param label_file: json file contains class and labels.
-  :param dest_path: destination directory to put tfrecords.
+  :param dest_path: destination directory to put tfrecords and image mean file.
   :param each_max: max number of tfrecord in each tfrecords file.
-  :param preprocessor: will preprocess inputs.
+  :param dest_img_size: destination image size [width, height]
   :return: none.
   """
 
@@ -110,6 +112,10 @@ def cvrt2tfrecord(json_path, img_home, label_file,
   cnt = 1
   tfrecord_filename = os.path.join(dest_path, '%d.tfrecords' % (cnt))
   writer = tf.python_io.TFRecordWriter(tfrecord_filename)
+
+  dest_img_size = np.array(dest_img_size)
+  dest_img_size = np.append(dest_img_size, 3)
+  mean_img = np.zeros(dest_img_size, dtype=np.float32)
 
   # Process each json file.
   for file in os.listdir(json_path):
@@ -132,12 +138,21 @@ def cvrt2tfrecord(json_path, img_home, label_file,
     labels = np.array(labels)
     bboxes = np.array(bboxes)
 
+    # Preprocess raw data.
+    img, img_size, bbox_num, labels, bboxes = preprocess(img, img_size, len(bboxes), labels, bboxes, dest_img_size)
+    mean_img = np.add(mean_img, img)
+
+    # from utils.visualize import visulizeBBox
+    # visulizeBBox(img, bboxes)
+    # plt.waitforbuttonpress()
+
+
     # Precess each bbox as a example
     feature = {
       'image_name': _bytes_feature(tf.compat.as_bytes(ori_rcd['imgname'])),
       'image': _bytes_feature(img.tobytes()),
       'size': _int64List_feature(img_size),
-      'bbox_num': _int64_feature(len(labels)),
+      'bbox_num': _int64_feature(bbox_num),
       'labels': _int64List_feature(labels),
       'bboxes': _int64List_feature(bboxes)
     }
@@ -158,17 +173,119 @@ def cvrt2tfrecord(json_path, img_home, label_file,
       tfrecord_filename = os.path.join(dest_path, '%d.tfrecords' % (cnt))
       writer = tf.python_io.TFRecordWriter(tfrecord_filename)
 
+    # TODO
+    break
+
   writer.close()
+
+  # write mean image to file.
+  mean_img /= cnt
+  np.save(path.join(dest_path, 'mean_img.npy'), mean_img)
   return
 
-def preprocess(img, size, bbox_num, labels, bboxes):
+class ResizePreprocessor:
+  def __init__(self, dest_size):
+    """
+    This version, destination size should be square.
+    :param conf:
+    """
+
+    self._dest_size = dest_size
+
+  def __call__(self, img, size, bboxes):
+    """
+    Resize to dest size but keep all bounding boxes.
+    Resize with ratio kept is first applied, then crop to dest size.
+    Bbox positions are adjusted according to the new size.
+    :param img: ndarray shape [w, h, c]
+    :param size: ndarray, content [w, h, c]
+    :param bboxes: ndarray, [Kx(x1, y1, x2, y2)]
+    :return: new img, size, bboxes
+    """
+    w, h = size[0], size[1]
+    wd, hd = self._dest_size[0], self._dest_size[1]
+    ratio = np.float(w) / np.float(h)
+    if ratio > 1:
+      hm = hd
+      wm = np.int(hm * ratio)
+    else:
+      wm = wd
+      hm = np.int(wm / ratio)
+
+    # Scale with ratio kept.
+    # img_d = trans.resize(image=img, output_shape=([hm, wm]), preserve_range=True)
+    img_d = resize(img, (hm, wm), preserve_range=True)
+
+    # Scale bboxes
+    w_s, h_s = wm / w, hm / h
+    bboxes[:, 0] = (bboxes[:, 0] * w_s).astype(np.int)
+    bboxes[:, 2] = (bboxes[:, 2] * w_s).astype(np.int)
+    bboxes[:, 1] = (bboxes[:, 1] * h_s).astype(np.int)
+    bboxes[:, 3] = (bboxes[:, 3] * h_s).astype(np.int)
+
+
+
+    # Crop center area
+    cx, cy = wm / 2, hm / 2
+    x, y = np.int(cx - wd / 2), np.int(cy - hd / 2)
+    min_x = np.min(bboxes[:, 0])
+    min_y = np.min(bboxes[:, 1])
+    max_x = np.max(bboxes[:, 2])
+    max_y = np.max(bboxes[:, 3])
+    min_x, min_y = min(min_x, x), min(min_y, y)
+    max_x = max(max_x, x + wd - 1, wm - 1)
+    max_y = max(max_y, y + hd - 1, hm - 1)
+
+    img_d = img_d[min_y:max_y + 1, min_x:max_x + 1, :]
+    bboxes[:, 0] -= min_x
+    bboxes[:, 2] -= min_x
+    bboxes[:, 1] -= min_y
+    bboxes[:, 3] -= min_y
+
+    r_w, r_h = max_x - min_x + 1, max_y - min_y + 1
+
+    if r_w != wd or r_h != hd:
+      img_d, bboxes = self._rescale2dest(img_d, np.array([r_w, r_h]), bboxes)
+
+    img_d = img_d.astype(np.uint8)
+    #
+    # from utils.visualize import visulizeBBox
+    # visulizeBBox(img_d, bboxes)
+    # plt.waitforbuttonpress()
+
+    return img_d, self._dest_size, bboxes
+
+  def _rescale2dest(self, img, size, bboxes):
+    w, h = size[0], size[1]
+    wd, hd = self._dest_size[0], self._dest_size[1]
+
+    # Scale with ratio kept.
+    # img_d = trans.resize(image=img, output_shape=([hd, wd]), preserve_range=True)
+    img_d = resize(img, (hd, wd), preserve_range=True)
+    # plt.imshow(img_d)
+    # plt.draw()
+    # plt.waitforbuttonpress()
+
+    # Scale bboxes
+    w_s, h_s = wd / w, hd / h
+    bboxes[:, 0] = (bboxes[:, 0] * w_s).astype(np.int)
+    bboxes[:, 2] = (bboxes[:, 2] * w_s).astype(np.int)
+    bboxes[:, 1] = (bboxes[:, 1] * h_s).astype(np.int)
+    bboxes[:, 3] = (bboxes[:, 3] * h_s).astype(np.int)
+
+    return img_d, bboxes
+
+
+def preprocess(img, size, bbox_num, labels, bboxes, dest_img_size):
   """
-  Transform batch data according to SSD requirement.
-  :param img: shape [batch, N-D]
-  :param size:shape [batch , 3]
-  :param bbox_num: shape [batch, 1]
-  :param labels: shape [batch, bbox_num, 1]
-  :param bboxes: shape [batch, bbox_num, 4]
+  Transform data according to SSD requirement.
+  Crop and resize image, adjust bounding boxes location.
+  :param img: shape [w, h, c]
+  :param size:shape [3]
+  :param bbox_num: integer
+  :param labels: shape [bbox_num]
+  :param bboxes: shape [bbox_num, 4]
+  :param dest_img_size: desired image size, tuple or list (w, h)
   :return:
   img: shape[batch, w, h, c]
   size: [batch, 3]
@@ -176,4 +293,7 @@ def preprocess(img, size, bbox_num, labels, bboxes):
   labels: [batch, bbox_num, 1]
   bboxes:[batch, bbox_num, 4]
   """
+  resizer = ResizePreprocessor(dest_img_size)
+  img, size, bboxes = resizer(img, size, bboxes)
+
   return img, size, bbox_num, labels, bboxes

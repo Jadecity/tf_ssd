@@ -26,7 +26,7 @@ def anchorBox(input_shape, layer_index, scales, ratios):
 
   # Add one more for ratio 1.
   if layer_index < len(scales) - 1:
-    s_prime = math.sqrt(sk * scales[layer_index + 1].scale)
+    s_prime = math.sqrt(sk * scales[layer_index + 1])
   else:
     s_prime = math.sqrt(sk * 107.5)
 
@@ -44,7 +44,7 @@ def anchorBox(input_shape, layer_index, scales, ratios):
   return anchors
 
 
-scales = get_scales()
+scales = get_scales(6)
 ratios = [1, 2, 3, 1/2, 1/3]
 layers_shape = [[38, 38], [19, 19], [10, 10], [5, 5], [3, 3], [1, 1]]
 

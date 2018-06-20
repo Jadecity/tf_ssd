@@ -77,6 +77,77 @@ def model_fn(features, labels, mode, params, config):
 
     return tf.estimator.EstimatorSpec(mode, predictions=predictions)
 
+def main(_):
+
+  if gconf.mode == 'train':
+    # Set run config.
+    run_conf = tf.estimator.RunConfig()
+    run_conf.model_dir = gconf.model_dir
+    run_conf.keep_checkpoint_max = 5
+    run_conf.save_checkpoints_steps = 1000
+    run_conf.save_summary_steps = 100
+
+    # Create estimator.
+    ssd_detector = tf.estimator.Estimator(model_fn=model_fn,
+                                          params={
+                                            'class_num': gconf.class_num,
+                                            'weight_decay': gconf.weight_decay,
+                                            'is_training': gconf.is_train,
+                                            'alpha': gconf.alpha,
+                                            'learning_rate': gconf.learning_rate
+                                          },
+                                          config=run_conf)
+
+    # Train model.
+    ssd_detector.train(input_fn=input_fn,
+                       max_steps=gconf.epoch_num*gconf.per_epoch_num)
+    return
+
+  if gconf.mode == 'eval':
+    # Set run config.
+    run_conf = tf.estimator.RunConfig()
+    run_conf.model_dir = gconf.model_dir
+
+    # Create estimator.
+    ssd_detector = tf.estimator.Estimator(model_fn=model_fn,
+                                          params={
+                                            'class_num': gconf.class_num
+                                          },
+                                          config=run_conf)
+
+    # Evaluate model.
+    eval_metrics = ssd_detector.evaluate(input_fn=input_fn)
+
+    # Print evaluation metrics.
+    pass
+
+    return
+
+  if gconf.mode == 'pred':
+    # Set run config.
+    run_conf = tf.estimator.RunConfig()
+    run_conf.model_dir = gconf.model_dir
+
+    # Create estimator.
+    ssd_detector = tf.estimator.Estimator(model_fn=model_fn,
+                                          params={
+                                            'class_num': gconf.class_num
+                                          },
+                                          config=run_conf)
+
+    # Use model to predict.
+    predictions = ssd_detector.predict(input_fn=input_fn)
+
+    # Visualize prediction result.
+    pass
+
+    return
+
+
+if __name__ == '__main__':
+  tf.app.run()
+
+
 
 
 

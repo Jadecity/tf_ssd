@@ -46,10 +46,10 @@ class PascalDataset:
     bboxes = tf.sparse_tensor_to_dense(example['bboxes'])
     bboxes = tf.reshape(bboxes, shape=boxes_shape)
 
-    # Preprocess batch data.
-    image, size, bbox_num, labels, bboxes = utils.preprocess(image, size,
-                                                             bbox_num, labels,
-                                                             bboxes)
+    # TODO Preprocess batch data.
+    # image, size, bbox_num, labels, bboxes = utils.preprocess(image, size,
+    #                                                          bbox_num, labels,
+    #                                                          bboxes)
 
     return image, size, bbox_num, labels, bboxes
 
