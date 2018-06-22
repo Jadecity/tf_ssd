@@ -39,17 +39,14 @@ class PascalDataset:
     image = tf.decode_raw(example['image'], tf.uint8)
     size = example['size']
     image = tf.reshape(image, size)
+    # image = tf.reshape(image, [300, 300, 3])
+    # print('--------', image.get_shape())
     labels = tf.sparse_tensor_to_dense(example['labels'])
 
     bbox_num = example['bbox_num']
     boxes_shape = tf.stack([bbox_num, 4])
     bboxes = tf.sparse_tensor_to_dense(example['bboxes'])
     bboxes = tf.reshape(bboxes, shape=boxes_shape)
-
-    # TODO Preprocess batch data.
-    # image, size, bbox_num, labels, bboxes = utils.preprocess(image, size,
-    #                                                          bbox_num, labels,
-    #                                                          bboxes)
 
     return image, size, bbox_num, labels, bboxes
 
@@ -70,7 +67,7 @@ class PascalDataset:
       # Create dataset.
       dataset = tf.data.TFRecordDataset(rcd_files)
       dataset = dataset.map(map_func=self._parse_func)
-      padding_shape = ([None, None, None], [None], [],
+      padding_shape = ([None, None, 3], [None], [],
                        tf.TensorShape([None]), tf.TensorShape([None, 4]))
       dataset = dataset.padded_batch(batchsize, padded_shapes=padding_shape)
       dataset = dataset.shuffle(buffer_size=200)

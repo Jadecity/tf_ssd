@@ -65,7 +65,7 @@ def inputParam():
   flags.DEFINE_integer(*arg_def('log_step', 10))
   flags.DEFINE_string(*arg_def('model_dir', ''))
 
-  flags.DEFINE_integer(*arg_def('train_batch_size', 2))
+  flags.DEFINE_integer(*arg_def('train_batch_size', 1))
   flags.DEFINE_integer(*arg_def('epoch_num', 300))
   flags.DEFINE_integer(*arg_def('per_epoch_num', 50000))
   flags.DEFINE_integer(*arg_def('gpu_num', 1))

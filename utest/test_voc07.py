@@ -41,9 +41,7 @@ def test_pascal_dataset(): # Test passed
       print('%d-th image bboxes: '%i, bboxes_val)
 
       # Visualize
-      print('---------max val', np.max(img_val[0]))
       shape = [size_val[0, 1], size_val[0, 0], size_val[0, 2]]
-      # img = np.fromstring(img, dtype=np.uint8)
       img_val.shape = shape
       visulizeBBox(img_val, bboxes_val[0])
       plt.waitforbuttonpress()

@@ -46,7 +46,7 @@ def anchorBox(input_shape, layer_index, scales, ratios):
 
 scales = get_scales(6)
 ratios = [1, 2, 3, 1/2, 1/3]
-layers_shape = [[38, 38], [19, 19], [10, 10], [5, 5], [3, 3], [1, 1]]
+layers_shape = [[10, 10], [10, 10], [5, 5], [3, 3], [3, 3], [1, 1]]
 
 anchors = {
   'resnet_v2_50/block3': anchorBox(layers_shape[0], 0, scales, ratios),

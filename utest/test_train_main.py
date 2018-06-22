@@ -10,6 +10,8 @@ import tensorflow as tf
 import utils.confUtil as confUtil
 from absl import flags, app
 from datasets.PascalDataset import PascalDataset
+# from train_ssd_main import model_fn
+import models.ssd_resnet_50 as ssd_resnet_50
 
 # Init global conf
 FLAGS = confUtil.inputParam()
@@ -30,7 +32,7 @@ def input_fn():
   image, size, bbox_num, label_ids, bboxes = itr.get_next()
 
 
-  features['image'] = image
+  features['image'] = tf.cast(image, dtype=tf.float32)
 
   labels['size'] = size
   labels['bbox_num'] = bbox_num
@@ -41,7 +43,43 @@ def input_fn():
 
   return features, labels
 
-def main(_):
+def model_fn(features, labels, mode, params, config):
+  """
+  Model function for estimator
+  :param features:
+  :param labels:
+  :param mode:
+  :param params:
+  :param config:
+  :return:
+  """
+  image = features['image']
+  # image = tf.zeros([1, 300, 300, 3], dtype=tf.float32)
+
+  # Init network.
+  ssdnet = ssd_resnet_50.init(params['class_num'], params['weight_decay'], params['is_training'])
+
+  # Compute output.
+  logits, locations, endpoints = ssdnet(image)
+
+  if mode == tf.estimator.ModeKeys.TRAIN:
+    # Compute SSD loss and put it to global loss.
+    ssd_resnet_50.ssdLoss(logits, locations, labels, params['alpha'])
+    total_loss = tf.losses.get_total_loss()
+
+    # Create train op
+    optimazer = tf.train.GradientDescentOptimizer(learning_rate=params['learning_rate'])
+    train_op = optimazer.minimize(total_loss, global_step=tf.train.get_or_create_global_step())
+    return tf.estimator.EstimatorSpec(mode, loss=total_loss, train_op=train_op)
+
+  if mode == tf.estimator.ModeKeys.EVAL:
+    pass # TODO
+
+  if mode == tf.estimator.ModeKeys.PREDICT:
+    return logits, locations
+
+
+def input_fn_main(_):
   feats, labels = input_fn()
   inits = tf.get_collection(tf.GraphKeys.TABLE_INITIALIZERS)
   with tf.Session() as ss:
@@ -49,9 +87,36 @@ def main(_):
     for _ in range(1):
       fv, lv = ss.run([feats, labels])
 
+def model_fn_forward_main(_):
+  feats, labels = input_fn()
+
+  inits = tf.get_collection(tf.GraphKeys.TABLE_INITIALIZERS)
+  prob, locations = model_fn(feats, labels, tf.estimator.ModeKeys.PREDICT, params={
+    'class_num' : 50,
+    'weight_decay':0.9,
+    'is_training': False,
+    'alpha': 1
+  }, config=None)
+
+  init = tf.global_variables_initializer()
+  with tf.Session() as ss:
+    ss.run(inits)
+    ss.run(init)
+
+    for _ in range(1):
+      for k in locations.keys():
+        out = ss.run(locations[k])
+        print(k, out.shape)
+
+
 
 def test_input_fn(): # Test passed.
   sys.argv = ['test_train_main.py']
-  app.run(main)
+  app.run(input_fn_main)
 
   assert 1
+
+# def test_model_fn_forward():
+if __name__ == '__main__':
+  sys.argv = ['test_train_main.py']
+  app.run(model_fn_forward_main)

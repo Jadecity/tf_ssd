@@ -9,7 +9,7 @@ from utils import confUtil, lossUtil
 import numpy as np
 
 
-def multibox_predict(input_layer, class_num, layer_name, batch_size, weight_decay):
+def multibox_predict(input_layer, class_num, layer_name, weight_decay):
   """
   Compute predictions for each input layer.
   :param input_layer: Input feature layer
@@ -20,28 +20,21 @@ def multibox_predict(input_layer, class_num, layer_name, batch_size, weight_deca
 
   # Get anchors for each layer.
   layer_anchors = anchors.get_layer_anchors(layer_name)
-  anchor_num = layer_anchors.shape()[2]
-  input_shape = [layer_anchors.shape()[0], layer_anchors.shape()[1]]
+  anchor_num = layer_anchors.shape[2]
+  input_shape = [layer_anchors.shape[0], layer_anchors.shape[1]]
 
-  with tf.variable_scope('pred'):
+  with tf.variable_scope('pred/%s' % layer_name):
     with slim.arg_scope([slim.conv2d],
                         activation_fn=tf.nn.relu,
                         weights_regularizer=slim.l2_regularizer(weight_decay)):
 
-      pred = slim.conv2d(input_layer, anchor_num * (class_num + 4), kernel_size=[3, 3], name='pred_conv1')
+      pred = slim.conv2d(input_layer, anchor_num * (class_num + 4), kernel_size=[3, 3])
 
   # Reshape output tensor to extract each anchor prediction.
-  pred_cls = tf.slice(pred.outputs, [0, 0, 0, 0, 0], [batch_size,
-                                                            input_shape[0],
-                                                            input_shape[1],
-                                                            anchor_num,
-                                                            class_num])
+  pred = tf.reshape(pred, [-1, input_shape[0], input_shape[1], anchor_num, class_num + 4])
+  pred_cls = tf.slice(pred, [0, 0, 0, 0, 0], [-1, input_shape[0], input_shape[1], anchor_num, class_num])
 
-  pred_pos = tf.slice(pred.outputs, [0, 0, 0, 0, class_num], [batch_size,
-                                                              input_shape[0],
-                                                              input_shape[1],
-                                                              anchor_num,
-                                                              4])
+  pred_pos = tf.slice(pred, [0, 0, 0, 0, class_num], [-1, input_shape[0], input_shape[1], anchor_num, 4])
 
   return pred_cls, pred_pos
 
@@ -62,7 +55,7 @@ def init(class_num, weight_decay, is_training):
 
     # Load resnet50
     with slim.arg_scope(resnet_v2.resnet_arg_scope(weight_decay=weight_decay,
-                                                   use_batch_norm=True)):
+                                                   use_batch_norm=False)):
       resnet, endpoints = resnet_v2.resnet_v2_50(inputs=image,
                                                  num_classes=class_num,
                                                  is_training=is_training)
@@ -80,27 +73,27 @@ def init(class_num, weight_decay, is_training):
                           weights_regularizer=slim.l2_regularizer(weight_decay)):
         block = 'block-1'
         with tf.variable_scope(block):  # 14x14x512 -> 7x7x512
-          net = slim.layers.conv2d(net, 256, kernel_size=[1, 1], activation_fn=tf.nn.relu, name='conv3')
-          net = slim.layers.conv2d(net, 512, kernel_size=[3, 3], stride=2, activation_fn=tf.nn.relu, name='conv4')
-        endpoints[block] = net
+          net = slim.layers.conv2d(net, 256, kernel_size=[1, 1], activation_fn=tf.nn.relu)
+          net = slim.layers.conv2d(net, 512, kernel_size=[3, 3], stride=2, activation_fn=tf.nn.relu)
+        end_feats[block] = net
 
         block = 'block-2'
         with tf.variable_scope(block):  # 7x7x512 -> 4x4x256
-          net = slim.layers.conv2d(net, 128, kernel_size=[1, 1], activation_fn=tf.nn.relu, name='conv5')
-          net = slim.layers.conv2d(net, 256, kernel_size=[3, 3], stride=2, activation_fn=tf.nn.relu, name='conv6')
-        endpoints[block] = net
+          net = slim.layers.conv2d(net, 128, kernel_size=[1, 1], activation_fn=tf.nn.relu)
+          net = slim.layers.conv2d(net, 256, kernel_size=[3, 3], stride=2, activation_fn=tf.nn.relu)
+        end_feats[block] = net
 
         block = 'block-3'
         with tf.variable_scope(block):  # 4x4x256 -> 2x2x256
-          net = slim.layers.conv2d(net, 128, kernel_size=[1, 1], activation_fn=tf.nn.relu, name='conv7')
-          net = slim.layers.conv2d(net, 256, kernel_size=[3, 3], activation_fn=tf.nn.relu, name='conv8')
-        endpoints[block] = net
+          net = slim.layers.conv2d(net, 128, kernel_size=[1, 1], activation_fn=tf.nn.relu)
+          net = slim.layers.conv2d(net, 256, kernel_size=[3, 3], activation_fn=tf.nn.relu)
+        end_feats[block] = net
 
         block = 'block-4'
         with tf.variable_scope(block):  # 2x2x256 -> 1x1x256
-          net = slim.layers.conv2d(net, 128, kernel_size=[1, 1], activation_fn=tf.nn.relu, name='conv9')
-          net = slim.layers.conv2d(net, 256, kernel_size=[3, 3], activation_fn=tf.nn.relu, padding='VALID', name='conv10')
-        endpoints[block] = net
+          net = slim.layers.conv2d(net, 128, kernel_size=[1, 1], activation_fn=tf.nn.relu)
+          net = slim.layers.conv2d(net, 256, kernel_size=[3, 3], activation_fn=tf.nn.relu, padding='VALID')
+        end_feats[block] = net
 
     """
     Add classifier conv layers to each added feature map(including the last layer of backbone network).
@@ -108,13 +101,13 @@ def init(class_num, weight_decay, is_training):
     """
     logits = {}
     locations = {}
-    for layer_name in endpoints.keys():
-      logit, location = multibox_predict(endpoints[layer_name], class_num, layer_name, weight_decay)
+    for layer_name in end_feats.keys():
+      logit, location = multibox_predict(end_feats[layer_name], class_num, layer_name, weight_decay)
 
       logits[layer_name] = logit
       locations[layer_name] = location
 
-    return logits, locations, endpoints
+    return logits, locations, end_feats
 
   return predict
 
@@ -196,7 +189,7 @@ def locationLoss(location, gbbox, pos_mask, layer_shape):
   return loc_loss
 
 
-def ssdLoss(logits, locations, labels, alpha, bathch_size):
+def ssdLoss(logits, locations, labels, alpha, batch_size):
   """
   Compute SSD loss.
   :param logits: a dict of raw prediction, key is layer name, each of shape [batch, w, h, anchor_number*class_num]
@@ -209,7 +202,7 @@ def ssdLoss(logits, locations, labels, alpha, bathch_size):
   :return:
   """
 
-  for bi in range(bathch_size):
+  for bi in range(batch_size):
     label = labels['labels'][bi]
     bboxes = labels['bboxes'][bi]
     """For each layer, compute ssd loss"""

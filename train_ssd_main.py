@@ -10,9 +10,8 @@ import models.ssd_resnet_50 as ssd_resnet_50
 from tensorflow.contrib import slim
 
 # Init global conf
-flags = confUtil.inputParam()
-confUtil.checkInputParam(flags)
-gconf = confUtil.initParam(flags)
+FLAGS = confUtil.inputParam()
+
 
 
 def input_fn():
@@ -20,18 +19,27 @@ def input_fn():
   Input function for estimator.
   :return:
   """
+
+  confUtil.checkInputParam(FLAGS)
+  gconf = confUtil.initParam(FLAGS)
+
   features = {}
   labels = {}
 
+  # Load dataset.
   dt = PascalDataset(gconf.dataset_path, gconf.train_batch_size)
-  image, size, bbox_num, label_ids, bboxes = dt.get_itr().get_next()
+  itr = dt.get_itr()
+  image, size, bbox_num, label_ids, bboxes = itr.get_next()
 
+  # Create output feature and label.
   features['image'] = image
 
   labels['size'] = size
   labels['bbox_num'] = bbox_num
   labels['labels'] = label_ids
   labels['bboxes'] = bboxes
+
+  tf.add_to_collection(tf.GraphKeys.TABLE_INITIALIZERS, itr.initializer)
 
   return features, labels
 
@@ -58,11 +66,11 @@ def model_fn(features, labels, mode, params, config):
   ssd_resnet_50.ssdLoss(logits, locations, labels, params['alpha'])
   total_loss = tf.losses.get_total_loss()
 
-  # Create train op
-  optimazer = tf.train.GradientDescentOptimizer(learning_rate=params['learning_rate'])
-  train_op = optimazer.minimize(total_loss, global_step=tf.train.get_or_create_global_step())
 
   if mode == tf.estimator.ModeKeys.TRAIN:
+    # Create train op
+    optimazer = tf.train.GradientDescentOptimizer(learning_rate=params['learning_rate'])
+    train_op = optimazer.minimize(total_loss, global_step=tf.train.get_or_create_global_step())
     return tf.estimator.EstimatorSpec(mode, loss=total_loss, train_op=train_op)
 
   if mode == tf.estimator.ModeKeys.EVAL:
