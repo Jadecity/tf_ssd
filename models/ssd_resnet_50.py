@@ -33,8 +33,10 @@ def multibox_predict(input_layer, class_num, layer_name, weight_decay):
   # Reshape output tensor to extract each anchor prediction.
   pred = tf.reshape(pred, [-1, input_shape[0], input_shape[1], anchor_num, class_num + 4])
   pred_cls = tf.slice(pred, [0, 0, 0, 0, 0], [-1, input_shape[0], input_shape[1], anchor_num, class_num])
+  pred_cls = tf.reshape(pred_cls, [-1, input_shape[0]*input_shape[1]*anchor_num, class_num])
 
   pred_pos = tf.slice(pred, [0, 0, 0, 0, class_num], [-1, input_shape[0], input_shape[1], anchor_num, 4])
+  pred_pos = tf.reshape(pred_pos, [-1, input_shape[0] * input_shape[1] * anchor_num, 4])
 
   return pred_cls, pred_pos
 
@@ -99,13 +101,17 @@ def init(class_num, weight_decay, is_training):
     Add classifier conv layers to each added feature map(including the last layer of backbone network).
     Prediction and localisations layers.
     """
-    logits = {}
-    locations = {}
+    logits = []
+    locations = []
     for layer_name in end_feats.keys():
       logit, location = multibox_predict(end_feats[layer_name], class_num, layer_name, weight_decay)
 
-      logits[layer_name] = logit
-      locations[layer_name] = location
+      logits.append(logit)
+      locations.append(location)
+
+    # Concat all feature layer outputs.
+    logits = tf.concat(logits, axis=1)
+    locations = tf.concat(locations, axis=1)
 
     return logits, locations, end_feats
 

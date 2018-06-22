@@ -2,7 +2,7 @@ import models.ssd_resnet_50 as ssd_resnet_50
 import tensorflow as tf
 
 def test_multibox_predict(): # Test passed.
-  input_layer = tf.zeros([1, 38, 38, 256], dtype=tf.float32)
+  input_layer = tf.zeros([1, 10, 10, 256], dtype=tf.float32)
   class_num = 50
   layer_name = 'resnet_v2_50/block3'
   weight_decay = 0.9
@@ -30,9 +30,8 @@ def test_predict(): # Test passed.
   with tf.Session() as ss:
     ss.run(init)
 
-    for k in locations.keys():
-      out = ss.run(locations[k])
-      print(k, out.shape)
+    out = ss.run(locations)
+    print(out.shape)
 
 
 if __name__ == '__main__':
