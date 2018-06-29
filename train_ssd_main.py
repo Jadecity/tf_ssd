@@ -13,26 +13,21 @@ from tensorflow.contrib import slim
 FLAGS = confUtil.inputParam()
 
 
-
 def input_fn():
+  gconf = confUtil.initParam(FLAGS)
   """
   Input function for estimator.
   :return:
   """
-
-  confUtil.checkInputParam(FLAGS)
-  gconf = confUtil.initParam(FLAGS)
-
   features = {}
   labels = {}
 
-  # Load dataset.
   dt = PascalDataset(gconf.dataset_path, gconf.train_batch_size)
   itr = dt.get_itr()
   image, size, bbox_num, label_ids, bboxes = itr.get_next()
 
-  # Create output feature and label.
-  features['image'] = image
+
+  features['image'] = tf.cast(image, dtype=tf.float32)
 
   labels['size'] = size
   labels['bbox_num'] = bbox_num
@@ -55,6 +50,7 @@ def model_fn(features, labels, mode, params, config):
   :return:
   """
   image = features['image']
+  # image = tf.zeros([1, 300, 300, 3], dtype=tf.float32)
 
   # Init network.
   ssdnet = ssd_resnet_50.init(params['class_num'], params['weight_decay'], params['is_training'])
@@ -62,12 +58,11 @@ def model_fn(features, labels, mode, params, config):
   # Compute output.
   logits, locations, endpoints = ssdnet(image)
 
-  # Compute SSD loss and put it to global loss.
-  ssd_resnet_50.ssdLoss(logits, locations, labels, params['alpha'])
-  total_loss = tf.losses.get_total_loss()
-
-
   if mode == tf.estimator.ModeKeys.TRAIN:
+    # Compute SSD loss and put it to global loss.
+    ssd_resnet_50.ssdLoss(logits, locations, labels, params['alpha'])
+    total_loss = tf.losses.get_total_loss()
+
     # Create train op
     optimazer = tf.train.GradientDescentOptimizer(learning_rate=params['learning_rate'])
     train_op = optimazer.minimize(total_loss, global_step=tf.train.get_or_create_global_step())
@@ -77,13 +72,7 @@ def model_fn(features, labels, mode, params, config):
     pass # TODO
 
   if mode == tf.estimator.ModeKeys.PREDICT:
-    prob_pred = tf.nn.softmax(logits, axis=4)
-    predictions = {
-      'prob': prob_pred,
-      'location': locations
-    }
-
-    return tf.estimator.EstimatorSpec(mode, predictions=predictions)
+    return logits, locations
 
 def main(_):
 

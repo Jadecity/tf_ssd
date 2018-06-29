@@ -297,3 +297,16 @@ def preprocess(img, size, bbox_num, labels, bboxes, dest_img_size):
   img, size, bboxes = resizer(img, size, bboxes)
 
   return img, size, bbox_num, labels, bboxes
+
+def getCategories(cat_file):
+  """
+  Load category dictionary from file.
+  :return:
+  """
+  if not path.exists(cat_file):
+    raise FileNotFoundError('%s not exists!' % cat_file)
+
+  with open(cat_file) as cat:
+    cat_lists = json.load(cat)
+
+  return cat_lists['categories']

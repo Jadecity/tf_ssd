@@ -12,6 +12,9 @@ from absl import flags, app
 from datasets.PascalDataset import PascalDataset
 # from train_ssd_main import model_fn
 import models.ssd_resnet_50 as ssd_resnet_50
+from object_detection.core.post_processing import multiclass_non_max_suppression
+from utils import evalUtil
+import datasets.pascalUtils as pascalUtils
 
 # Init global conf
 FLAGS = confUtil.inputParam()
@@ -73,7 +76,19 @@ def model_fn(features, labels, mode, params, config):
     return tf.estimator.EstimatorSpec(mode, loss=total_loss, train_op=train_op)
 
   if mode == tf.estimator.ModeKeys.EVAL:
-    pass # TODO
+    plogits = tf.unstack(logits, axis=0)
+    probs = tf.nn.softmax(plogits, axis=1)
+    pbboxes = tf.unstack(locations, axis=0)
+
+    # Remove all background bboxes
+    pbboxes, probs = evalUtil.rmBackgroundBox(pbboxes, probs)
+
+    #TODO  Apply non maximum suppression.
+    pbboxes_list = multiclass_non_max_suppression(pbboxes, probs, )
+
+    eval_metrics = {}
+    eval_metrics.update(evalUtil.get_evaluate_ops(probs, pbboxes_list, labels, categories=labels['category']))
+    return eval_metrics
 
   if mode == tf.estimator.ModeKeys.PREDICT:
     return logits, locations
@@ -104,9 +119,8 @@ def model_fn_forward_main(_):
     ss.run(init)
 
     for _ in range(1):
-      for k in locations.keys():
-        out = ss.run(locations[k])
-        print(k, out.shape)
+      out = ss.run(locations)
+      print(out.shape)
 
 
 

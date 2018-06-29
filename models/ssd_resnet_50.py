@@ -4,7 +4,7 @@ Define ssd net using resnet_50 as backbone network.
 import tensorflow as tf
 from tensorflow.contrib import slim
 from nets import resnet_v2
-from utils import anchors
+from utils import anchorsUtil
 from utils import confUtil, lossUtil
 import numpy as np
 
@@ -19,7 +19,7 @@ def multibox_predict(input_layer, class_num, layer_name, weight_decay):
   """
 
   # Get anchors for each layer.
-  layer_anchors = anchors.get_layer_anchors(layer_name)
+  layer_anchors = anchorsUtil.get_layer_anchors(layer_name)
   anchor_num = layer_anchors.shape[2]
   input_shape = [layer_anchors.shape[0], layer_anchors.shape[1]]
 
@@ -120,14 +120,14 @@ def init(class_num, weight_decay, is_training):
 
 def posMask(bbox, anchors):
   """
-  Create a boolean mask of shape [w, h, anchor_num]
+  Create a boolean mask of shape [anchor_num].
   :param bboxes: ground truth bbox of shape[4]
-  :param anchors: anchors of current layer , shape [w, h, anchor_num]
-  :return: a boolean mask of shape [w, h, anchor_num]
+  :param anchors: anchors of current layer , shape [anchor_num, 4]
+  :return: a boolean mask of shape [anchor_num]
   """
 
   # Compute jaccard overlap.
-  overlap = lossUtil.jaccardIndex(bbox, tf.constant(anchors, dtype=tf.float32))
+  overlap = lossUtil.jaccardIndex(bbox, anchors)
 
   # Get positive and negtive mask accoding to overlap.
   pos_mask = tf.greater(overlap, 0.5)
@@ -138,25 +138,23 @@ def posMask(bbox, anchors):
 def classLoss(logits, label, pos_mask):
   """
   Classification loss.
-  :param logits: predicted logits, shape [w, h, anchor_num*class_num]
-  :param label: shape [bbox_num]
-  :param pos_mask: shape [w, h, anchor_num]
+  :param logits: predicted logits, shape [anchor_num, class_num]
+  :param label: scalar
+  :param pos_mask: shape [anchor_num]
   :return: loss
   """
   neg_mask = tf.logical_not(pos_mask)
 
   # Loss for each postition.
-  conf_loss = tf.log(tf.nn.softmax(logits, axis=3))
-  cat_idx = tf.where(tf.greater(label, 0))
-  cat_idx = tf.cast(cat_idx, dtype=tf.int32)
-  cat_idx = tf.concat([[0, 0, 0], cat_idx[0]], axis=0)
-  conf_loss = tf.slice(conf_loss, cat_idx,
-                       [conf_loss.get_shape()[0],
-                        conf_loss.get_shape()[1], conf_loss.get_shape()[2], 1])
-  conf_loss = tf.squeeze(conf_loss, [3])
+  conf_loss = tf.log(tf.nn.softmax(logits, axis=1))
 
-  pos_loss = tf.boolean_mask(conf_loss, pos_mask)
-  neg_loss = tf.boolean_mask(conf_loss, neg_mask)
+
+  pos_loss = tf.slice(conf_loss, [0, label], [-1, 1])
+  pos_loss = tf.boolean_mask(pos_loss, pos_mask)
+  pos_loss = tf.reduce_sum(pos_loss)
+
+  neg_loss = tf.slice(conf_loss, [0, 0], [-1, 1])
+  neg_loss = tf.boolean_mask(neg_loss, neg_mask)
 
   # Top-k negative loss.
   pos_num = tf.reduce_sum(tf.cast(pos_mask, dtype=tf.int32))
@@ -164,29 +162,21 @@ def classLoss(logits, label, pos_mask):
   neg_loss = tf.cond(tf.equal(tf.multiply(neg_num, pos_num), 0),
                      lambda: tf.constant(0, dtype=tf.float32),
                      lambda: tf.nn.top_k(neg_loss, tf.minimum(neg_num, tf.multiply(pos_num, 3)))[0])
-
-  pos_loss = tf.reduce_sum(pos_loss)
   neg_loss = tf.reduce_sum(neg_loss)
+
   conf_loss = tf.negative(tf.add(pos_loss, neg_loss))
 
   return conf_loss
 
 
-def locationLoss(location, gbbox, pos_mask, layer_shape):
+def locationLoss(location, gbbox, pos_mask):
   """
   Compute location loss.
-  :param location: predicted location, shape [w, h, anchor_num*4]
-  :param gbbox: ground truth bbox, shape [4]
-  :param pos_mask: shape [w, h, anchor_num]
-  :param layer_shape: a tensor, 1-d, contains [w, h, anchor_num] of current layer.
+  :param location: predicted location, shape [anchor_num, 4]
+  :param gbbox: ground truth bbox, shape [anchor_num, 4]
+  :param pos_mask: shape [anchor_num]
   :return: location loss
   """
-
-  for _ in range(3):
-    gbbox = tf.expand_dims(gbbox, 0)
-
-  gbbox = tf.tile(gbbox, layer_shape)
-
   diff = tf.subtract(location, gbbox)
   loc_loss = lossUtil.smoothL1(diff)
   loc_loss = tf.boolean_mask(loc_loss, pos_mask)
@@ -198,31 +188,36 @@ def locationLoss(location, gbbox, pos_mask, layer_shape):
 def ssdLoss(logits, locations, labels, alpha, batch_size):
   """
   Compute SSD loss.
-  :param logits: a dict of raw prediction, key is layer name, each of shape [batch, w, h, anchor_number*class_num]
-  :param locations: a dict of location prediction, key is layer name, each of shape [batch, w, h, anchor_number*4]
+  :param logits: a tensor of raw prediction, shape [batch, total_anchor_num, class_num]
+  :param locations: a tensor of location prediction, shape [batch, total_anchor_num, 4]
   :param labels: a dict,
-            labels['bbox_num']: bbox number
+            labels['bbox_num']: shape [batch, 1]
             labels['labels']: shape [batch, bbox_num],
             labels['bboxes']: shape [batch, bbox_num, 4]
   :param alpha: weight between classification loss and location loss.
   :return:
   """
+  anchors = tf.constant(anchorsUtil.get_all_layer_anchors(), dtype=tf.float32)
+  total_loss = tf.constant(0, dtype=tf.float32)
 
   for bi in range(batch_size):
     label = labels['labels'][bi]
     bboxes = labels['bboxes'][bi]
-    """For each layer, compute ssd loss"""
-    for layer_name in confUtil.endLayers():
-      anchors = anchors.get_layer_anchors(layer_name)
-      layer_shape = tf.constant([anchors.shape()[0:3]])
-      """For each ground truth box, compute loss"""
-      for bbox in bboxes:
-        pos_mask = posMask(bbox, anchors)
-        pos_num = tf.reduce_sum(pos_mask)
-        cls_loss = classLoss(logits[bi], label, pos_mask, layer_shape)
-        loc_loss = locationLoss(locations[bi], bbox, pos_mask, layer_shape)
 
-        total_loss = (cls_loss + alpha * loc_loss) / pos_num
-        tf.losses.add_loss(total_loss)
+    """For each ground truth box, compute loss"""
+    for bbox, cur_label in zip(tf.unstack(bboxes), tf.unstack(label)):
+      # Transform bbox.
+      g_bbox = lossUtil.encodeBBox(bbox, anchors)
 
-  return
+      pos_mask = posMask(bbox, anchors)
+      pos_num = tf.reduce_sum(tf.cast(pos_mask, dtype=tf.float32))
+
+
+      cls_loss = classLoss(logits[bi], cur_label, pos_mask)
+      loc_loss = locationLoss(locations[bi], g_bbox, pos_mask)
+
+      total_loss += (cls_loss + alpha * loc_loss) / pos_num
+
+  tf.losses.add_loss(total_loss)
+
+  return total_loss

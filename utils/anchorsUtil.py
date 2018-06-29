@@ -33,13 +33,14 @@ def anchorBox(input_shape, layer_index, scales, ratios):
   boxes.append([s_prime, s_prime])
 
   anchor_num = len(ratios) + 1
-  anchors = np.zeros([input_shape[0], input_shape[1], anchor_num, 4])
+  anchors = np.zeros([input_shape[0] * input_shape[1] * anchor_num, 4])
   for r in range(input_shape[0]):
     cy = (r + 0.5) / float(input_shape[0])
     for c in range(input_shape[1]):
       cx = (c + 0.5) / float(input_shape[1])
       for k, box in enumerate(boxes):
-        anchors[r, c, k, :] = [cx, cy, box[0], box[1]]
+        idx = r * input_shape[1] * anchor_num + c * anchor_num + k
+        anchors[idx, :] = [cx, cy, box[0], box[1]]
 
   return anchors
 
@@ -60,3 +61,13 @@ anchors = {
 
 def get_layer_anchors(layer_name):
   return anchors[layer_name]
+
+def get_all_layer_anchors():
+  # return np.stack([anchors['resnet_v2_50/block3'],
+  #                  anchors['resnet_v2_50/block4'],
+  #                  anchors['block-1'],
+  #                  anchors['block-2'],
+  #                  anchors['block-3'],
+  #                  anchors['block-4']])
+  return np.array([[0.5, 0.5, 0.2, 0.2],
+                   [0.5, 0.5, 0.3, 0.3]])
