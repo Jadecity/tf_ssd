@@ -8,7 +8,7 @@ def rmBackgroundBox(bboxes, probs):
   """
   Remove all background boxes.
   :param bboxes: tensor of shape [bbox_num, 4]
-  :param probs: tensor of shape [bbox_num, class_num]
+  :param probs: tensor of shape [bbox_num, class_num], class 0 is background class.
   :return: bboxes after background bboxes removed.
   """
   mask = tf.argmax(probs, axis=1)
@@ -21,13 +21,14 @@ def rmBackgroundBox(bboxes, probs):
 
 def get_evaluate_ops(probs, pbbox, glabel, categories):
   """
-  :param plogits: tensor of shape [1, anchor_num, class_num]
-  :param plocations: tensor of shape [1, anchor_num, 4]
+  :param probs: tensor of shape [1, anchor_num, class_num]
+  :param pbbox: tensor of shape [1, anchor_num, 4]
   :param glabel: dict of tensor,
-    'bbox_num' : a tensor, [1, 1]
-    'labels': shape [1, bbox_num]
-    'bboxes'of shape [1, bbox_num, 4]
-  :param batch_size: a scalar.
+    'labels': shape [1, anchor_num]
+    'bboxes': shape [1, anchor_num, 4]
+  :param categories: A list of dicts, each of which has the following keys -
+        'id': (required) an integer id uniquely identifying this category.
+        'name': (required) string representing category name e.g., 'cat', 'dog'.
   :return: a dict of tensor, representing metrics.
   """
 
