@@ -82,8 +82,12 @@ def model_fn(features, labels, mode, params, config):
     # Remove all background bboxes
     pbboxes, probs = evalUtil.rmBackgroundBox(pbboxes, probs)
 
-    #TODO  Apply non maximum suppression.
-    pbboxes_list = multiclass_non_max_suppression(pbboxes, probs, )
+    # Apply non maximum suppression.
+    pbboxes_list = multiclass_non_max_suppression(pbboxes,
+                                                  probs,
+                                                  params['score_thresh'],
+                                                  params['iou_thresh'],
+                                                  params['max_size_per_class'])
 
     eval_metrics = {}
     eval_metrics.update(evalUtil.get_evaluate_ops(probs, pbboxes_list, labels, categories=labels['category']))
@@ -132,5 +136,5 @@ def test_input_fn(): # Test passed.
 
 # def test_model_fn_forward():
 if __name__ == '__main__':
-  sys.argv = ['test_train_main.py']
+  sys.argv = ['test_train_eval.py']
   app.run(model_fn_forward_main)

@@ -28,30 +28,38 @@ def arg_def(name, default_val):
   :return: param name and its help description.
   """
   return name, default_val, param_help[name]
-
-
 Param = namedtuple('ParamStruct', [
-    'dataset_path',
-    'mean_img',
-    'mode',
+  # Common
+  'dataset_path',
+  'mean_img',
+  'mode',
 
-    'log_step',
-    'model_dir',
+  'log_step',
+  'model_dir',
 
-    'train_batch_size',
-    'epoch_num',
-    'per_epoch_num',
+  'class_num',
 
-    'class_num',
-    'learning_rate',
-    'weight_decay',
-    'momentum',
-    'input_size',
-    'alpha',
+  # Train
+  'epoch_num',
+  'per_epoch_num',
+  'learning_rate',
+  'weight_decay',
+  'momentum',
+  'input_size',
+  'alpha',
+  'train_batch_size',
 
-    'is_train',
-    'gpu_num'
+  # Eval
+  'score_thresh',
+  'iou_thresh',
+  'max_size_per_class',
+
+  # Other
+  'is_train',
+  'gpu_num'
 ])
+
+
 
 def inputParam():
   """
@@ -60,7 +68,7 @@ def inputParam():
   """
   flags.DEFINE_string(*arg_def('dataset_path', '/home/autel/libs/ssd-tensorflow-ljanyst/pascal-voc/trainval/VOCdevkit/VOC2007/tfrecords'))
   flags.DEFINE_string(*arg_def('mean_img', ''))
-  flags.DEFINE_string(*arg_def('mode', 'train'))
+  flags.DEFINE_string(*arg_def('mode', 'eval'))
 
   flags.DEFINE_integer(*arg_def('log_step', 10))
   flags.DEFINE_string(*arg_def('model_dir', ''))
@@ -117,6 +125,10 @@ def initParam(input_flag):
     input_size=32,
 
     alpha=1,
+
+    score_thresh=0.6,
+    iou_thresh = 0.5,
+    max_size_per_class=30,
 
     is_train=(input_flag.mode == 'train'),
     gpu_num=input_flag.gpu_num

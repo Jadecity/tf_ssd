@@ -11,17 +11,18 @@ import numpy as np
 
 def multibox_predict(input_layer, class_num, layer_name, weight_decay):
   """
-  Compute predictions for each input layer.
+  Compute predictions for input layer.
   :param input_layer: Input feature layer
   :param class_num: number of output classes.
-  :param anchor_num: number of anchors.
+  :param layer_name: layer name.
+  :param weight_decay: weight decay.
   :return: prediction p, and localizatoin l.
   """
 
   # Get anchors for each layer.
   layer_anchors = anchorsUtil.get_layer_anchors(layer_name)
-  anchor_num = layer_anchors.shape[2]
-  input_shape = [layer_anchors.shape[0], layer_anchors.shape[1]]
+  layer_shape = layer_anchors.shape
+  anchor_num = layer_shape[2]
 
   with tf.variable_scope('pred/%s' % layer_name):
     with slim.arg_scope([slim.conv2d],
@@ -31,12 +32,12 @@ def multibox_predict(input_layer, class_num, layer_name, weight_decay):
       pred = slim.conv2d(input_layer, anchor_num * (class_num + 4), kernel_size=[3, 3])
 
   # Reshape output tensor to extract each anchor prediction.
-  pred = tf.reshape(pred, [-1, input_shape[0], input_shape[1], anchor_num, class_num + 4])
-  pred_cls = tf.slice(pred, [0, 0, 0, 0, 0], [-1, input_shape[0], input_shape[1], anchor_num, class_num])
-  pred_cls = tf.reshape(pred_cls, [-1, input_shape[0]*input_shape[1]*anchor_num, class_num])
+  pred = tf.reshape(pred, [-1, layer_shape[0], layer_shape[1], anchor_num, class_num + 4])
+  pred_cls = tf.slice(pred, [0, 0, 0, 0, 0], [-1, layer_shape[0], layer_shape[1], anchor_num, class_num])
+  pred_cls = tf.reshape(pred_cls, [-1, layer_shape[0]*layer_shape[1]*anchor_num, class_num])
 
-  pred_pos = tf.slice(pred, [0, 0, 0, 0, class_num], [-1, input_shape[0], input_shape[1], anchor_num, 4])
-  pred_pos = tf.reshape(pred_pos, [-1, input_shape[0] * input_shape[1] * anchor_num, 4])
+  pred_pos = tf.slice(pred, [0, 0, 0, 0, class_num], [-1, layer_shape[0], layer_shape[1], anchor_num, 4])
+  pred_pos = tf.reshape(pred_pos, [-1, layer_shape[0] * layer_shape[1] * anchor_num, 4])
 
   return pred_cls, pred_pos
 
